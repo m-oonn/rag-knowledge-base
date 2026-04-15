@@ -1,0 +1,45 @@
+# Python 
+__pycache__/ 
+*.py[cod] 
+*$py.class 
+*.so 
+.Python 
+build/ 
+develop-eggs/ 
+dist/ 
+downloads/ 
+eggs/ 
+.eggs/ 
+lib/ 
+lib64/ 
+parts/ 
+sdist/ 
+var/ 
+wheels/ 
+*.egg-info/ 
+.installed.cfg 
+*.egg 
+ECHO 处于打开状态。
+# Virtual Environment 
+venv/ 
+ENV/ 
+.venv 
+ECHO 处于打开状态。
+# IDE 
+.vscode/ 
+.idea/ 
+*.swp 
+*.swo 
+ECHO 处于打开状态。
+# Project Files 
+.env 
+.env.local 
+.env.*.local 
+*.log 
+chroma_db/ 
+data/ 
+logs/ 
+ECHO 处于打开状态。
+# OS 
+.DS_Store 
+Thumbs.db 
