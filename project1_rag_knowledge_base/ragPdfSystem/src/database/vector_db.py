@@ -48,26 +48,17 @@ class ChromaStore:
         logger.info(f"Chroma store ready at {self._path}")
 
     def _get_or_create_collection(self):
-        # Try to use sentence-transformers embedding function if available
-        ef = None
-        if settings.EMBEDDING_PROVIDER == "sentence-transformers":
-            try:
-                from chromadb.utils.embedding_functions import (
-                    SentenceTransformerEmbeddingFunction,
-                )
-                ef = SentenceTransformerEmbeddingFunction(
-                    model_name=settings.SENTENCE_TRANSFORMER_MODEL
-                )
-            except Exception:
-                pass
-
-        if ef:
-            return self.client.get_or_create_collection(
+        # We embed manually, so no need for Chroma's built-in embedding function.
+        # This avoids dimension locking when switching embedding models.
+        try:
+            col = self.client.get_collection(
                 name=self.collection_name,
-                embedding_function=ef,
-                metadata={"hnsw:space": "cosine"},
+                embedding_function=None,
             )
-        return self.client.get_or_create_collection(
+            return col
+        except Exception:
+            pass
+        return self.client.create_collection(
             name=self.collection_name,
             metadata={"hnsw:space": "cosine"},
         )
@@ -256,9 +247,23 @@ class MilvusStore:
 # Factory
 # ================================================================
 
+_vector_store = None
+
+
 def get_vector_store() -> VectorStore:
+    global _vector_store
+    if _vector_store is not None:
+        return _vector_store
+
     if settings.VECTOR_STORE == "chroma":
-        return ChromaStore()
+        _vector_store = ChromaStore()
     elif settings.VECTOR_STORE == "milvus":
-        return MilvusStore()
-    raise ValueError(f"Unknown VECTOR_STORE: {settings.VECTOR_STORE}")
+        _vector_store = MilvusStore()
+    else:
+        raise ValueError(f"Unknown VECTOR_STORE: {settings.VECTOR_STORE}")
+
+    return _vector_store
+
+
+# Backward compatibility alias
+MilvusClient = MilvusStore

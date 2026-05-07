@@ -79,7 +79,8 @@ class Settings(BaseSettings):
     DEEPSEEK_MODEL: str = "deepseek-chat"
 
     # Sentence Transformers
-    SENTENCE_TRANSFORMER_MODEL: str = "all-MiniLM-L6-v2"
+    SENTENCE_TRANSFORMER_MODEL: str = "BAAI/bge-small-zh-v1.5"  # Chinese-optimized, 512-dim
+    SENTENCE_TRANSFORMER_MODEL_EN: str = "all-MiniLM-L6-v2"       # English fallback, 384-dim
     RERANK_CROSS_ENCODER_MODEL: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     HF_ENDPOINT: str = "https://huggingface.co"
 

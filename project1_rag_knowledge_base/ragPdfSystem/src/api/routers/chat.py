@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional, Any
 from pydantic import BaseModel
@@ -208,3 +209,89 @@ def batch_delete_sessions(
             
     db.commit()
     return {"message": f"Deleted {deleted_count} sessions"}
+
+
+@router.post("/stream")
+def chat_stream(
+    request: ChatRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """SSE streaming RAG chat endpoint."""
+    # Resolve KBs (same logic as main chat endpoint)
+    assistant = None
+    kb_ids = []
+    if request.assistant_id:
+        assistant = db.query(Assistant).filter(Assistant.id == request.assistant_id).first()
+        if assistant and (assistant.user_id == current_user.id):
+            kb_ids = assistant.kb_ids or []
+    elif request.kb_id:
+        kb_ids = [request.kb_id]
+
+    valid_kb_ids = []
+    if kb_ids:
+        kbs = db.query(KnowledgeBase).filter(KnowledgeBase.id.in_(kb_ids)).all()
+        valid_kb_ids = [kb.id for kb in kbs if kb.owner_id == current_user.id or kb.is_public]
+
+    # Session
+    import uuid as _uuid
+    session_uid = request.session_id or str(_uuid.uuid4())
+
+    assistant_config = {
+        "system_prompt": assistant.system_prompt if assistant else None,
+        "memory_config": assistant.memory_config if assistant else None,
+    } if assistant else None
+
+    def generate():
+        """SSE event generator."""
+        # Build RAG prompt
+        result = rag_service.query(
+            query_text=request.query,
+            top_k=request.top_k,
+            session_id=session_uid,
+            kb_ids=valid_kb_ids,
+            assistant_config=assistant_config,
+        )
+
+        # Yield sources first
+        sources_json = __import__("json").dumps([
+            {"id": s.get("id", ""), "score": s.get("score", 0), "text": s.get("text", "")[:200]}
+            for s in result.get("source_documents", [])
+        ])
+        yield f"event: sources\ndata: {sources_json}\n\n"
+
+        # Stream the answer
+        context = "\n\n".join(
+            f"[{i+1}] {s.get('text', '')}"
+            for i, s in enumerate(result.get("source_documents", []))
+        )
+        prompt = rag_service.llm_client.generate_response.__wrapped__ if hasattr(
+            rag_service.llm_client.generate_response, "__wrapped__"
+        ) else None
+
+        # Use the LLM client's streaming directly
+        rag_prompt = f"""基于以下上下文信息，回答问题。
+
+上下文：
+{context}
+
+问题：{request.query}
+
+要求：基于上下文回答，不添加外部知识。如无相关信息请说明。
+
+回答："""
+
+        for token in rag_service.llm_client.generate_stream(rag_prompt):
+            yield f"data: {__import__('json').dumps({'token': token})}\n\n"
+
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

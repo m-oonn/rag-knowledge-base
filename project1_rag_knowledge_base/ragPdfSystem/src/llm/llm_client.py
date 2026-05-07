@@ -105,6 +105,100 @@ User Question: {query}
 Answer:"""
         return self._call(prompt)
 
+    def generate_stream(self, prompt: str):
+        """Generator that yields text chunks for SSE streaming."""
+        if self.provider == "ollama":
+            yield from self._stream_ollama(prompt)
+        elif self.provider == "deepseek":
+            yield from self._stream_deepseek(prompt)
+        elif self.provider == "dashscope":
+            # DashScope streaming via LangChain
+            yield from self._stream_dashscope(prompt)
+        else:
+            yield "LLM Service unavailable."
+
+    def _stream_ollama(self, prompt: str):
+        import requests
+        import json
+        try:
+            resp = requests.post(
+                f"{settings.OLLAMA_HOST}/api/generate",
+                json={
+                    "model": settings.OLLAMA_MODEL,
+                    "prompt": prompt,
+                    "stream": True,
+                    "options": {"temperature": 0.3, "num_predict": 1024},
+                },
+                stream=True,
+                timeout=120,
+            )
+            for line in resp.iter_lines():
+                if line:
+                    try:
+                        chunk = json.loads(line)
+                        yield chunk.get("response", "")
+                    except json.JSONDecodeError:
+                        pass
+        except Exception as e:
+            yield f"[Ollama stream error: {e}]"
+
+    def _stream_deepseek(self, prompt: str):
+        import requests
+        import json
+        try:
+            resp = requests.post(
+                f"{settings.DEEPSEEK_BASE_URL}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {settings.DEEPSEEK_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": settings.DEEPSEEK_MODEL,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.3,
+                    "max_tokens": 1024,
+                    "stream": True,
+                },
+                stream=True,
+                timeout=60,
+            )
+            for line in resp.iter_lines():
+                if line and line.startswith(b"data: "):
+                    data_str = line[6:]
+                    if data_str == b"[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data_str)
+                        delta = chunk.get("choices", [{}])[0].get("delta", {})
+                        content = delta.get("content", "")
+                        if content:
+                            yield content
+                    except json.JSONDecodeError:
+                        pass
+        except Exception as e:
+            yield f"[DeepSeek stream error: {e}]"
+
+    def _stream_dashscope(self, prompt: str):
+        try:
+            from langchain_community.chat_models import ChatTongyi
+            from langchain_core.messages import HumanMessage, SystemMessage
+
+            llm = ChatTongyi(
+                model=settings.LLM_MODEL,
+                temperature=0.3,
+                api_key=settings.DASHSCOPE_API_KEY,
+                streaming=True,
+            )
+            messages = [
+                SystemMessage(content="You are a helpful RAG assistant."),
+                HumanMessage(content=prompt),
+            ]
+            for chunk in llm.stream(messages):
+                if chunk.content:
+                    yield chunk.content
+        except Exception as e:
+            yield f"[DashScope stream error: {e}]"
+
     def generate_custom_response(
         self, prompt: str, system_prompt: Optional[str] = None
     ) -> str:

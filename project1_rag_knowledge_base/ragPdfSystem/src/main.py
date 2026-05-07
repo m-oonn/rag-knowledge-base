@@ -11,10 +11,6 @@ from src.settings import settings
 from src.database.sql_session import engine, Base
 from src.utils.logger import logger
 
-# Create tables
-Base.metadata.create_all(bind=engine)
-
-
 def create_app() -> FastAPI:
     app = FastAPI(
         title=settings.APP_NAME,
@@ -29,6 +25,15 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Ensure tables are created after all models are imported
+    from src.database.models import (  # noqa: F811
+        User, KnowledgeBase, KnowledgeDocument, DocumentChunk,
+        GeneratedQAPair, ChatSession, ChatInteraction,
+        EvaluationTask, EvaluationResult, EvaluationDatasetItem,
+        Assistant, Agent,
+    )
+    Base.metadata.create_all(bind=engine)
 
     # ── Core routers (always available) ──────────────────────
     from src.api.routers import health, auth, knowledge_base, chat, evaluation
