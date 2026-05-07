@@ -1,0 +1,24 @@
+# Lightweight mode: single container, zero external dependencies
+# Start: docker-compose -f docker/docker-compose.light.yml up -d
+
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile.light
+    container_name: rag_light
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../data:/app/data
+      - ../logs:/app/logs
+    environment:
+      - VECTOR_STORE=chroma
+      - LLM_PROVIDER=deepseek
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - EMBEDDING_PROVIDER=sentence-transformers
+      - RERANK_PROVIDER=none
+      - HF_ENDPOINT=https://hf-mirror.com
+    restart: unless-stopped

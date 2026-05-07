@@ -47,15 +47,24 @@ DEEPSEEK_API_KEY=sk-xxx     # for DeepSeek
 HF_ENDPOINT=https://hf-mirror.com
 ```
 
-### 3. Start
+### 3. One-click demo (no server needed)
 
 ```bash
-# Backend
-python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
-# API docs: http://localhost:8000/docs
+python demo.py
+```
 
-# Frontend (optional)
-streamlit run streamlit_app.py
+### 4. Start server
+
+```bash
+uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+# API docs: http://localhost:8000/docs
+# Streamlit: streamlit run streamlit_app.py
+```
+
+### 5. Docker (single container)
+
+```bash
+docker-compose -f docker/docker-compose.light.yml up -d
 ```
 
 ## API
@@ -85,7 +94,7 @@ docker-compose -f docker/docker-compose.yml up -d
 
 - **Dual-mode**: Chroma + Ollama for dev, Milvus + Qwen-Max for prod
 - **Multi-LLM**: Switch by changing one config line
-- **Smart retrieval**: Dense + sparse hybrid search, CrossEncoder reranking
+- **Hybrid search**: BM25 (keyword) + Vector (semantic) + RRF fusion, CrossEncoder reranking
 - **Multi-hop**: Auto question decomposition for complex queries
 - **Memory**: Short-term conversation + long-term vector memory
 - **Evaluation**: RAGAS evaluation with auto QA pair generation

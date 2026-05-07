@@ -8,7 +8,7 @@ from src.settings import settings
 from src.services.question_analyzer import QuestionAnalyzer
 from src.services.memory_service import MemorySystem
 
-# Global singleton - shared across all routers
+# Global singleton
 _rag_service_instance = None
 
 
@@ -26,6 +26,38 @@ class RAGService:
         self.reranker = get_reranker()
         self.analyzer = QuestionAnalyzer(self.llm_client)
         self.memory = MemorySystem()
+        self._hybrid = None
+        self._bm25_dirty = True
+
+    def _get_retriever(self):
+        """Return hybrid retriever if enabled, else vector-only."""
+        if settings.ENABLE_HYBRID_SEARCH:
+            if self._hybrid is None:
+                from src.retrieval.hybrid_retriever import HybridRetriever
+                self._hybrid = HybridRetriever()
+            if self._bm25_dirty:
+                self._sync_bm25_index()
+            return self._hybrid
+        return self.retriever
+
+    def _sync_bm25_index(self):
+        """Rebuild BM25 index from Chroma store."""
+        try:
+            chroma = self.retriever.vector_store
+            if not hasattr(chroma, 'collection') or chroma.collection.count() == 0:
+                self._bm25_dirty = False
+                return
+            all_data = chroma.collection.get(include=["documents", "metadatas"])
+            if all_data and all_data["documents"]:
+                self._hybrid.index_chunks(
+                    all_data["documents"],
+                    all_data.get("metadatas") or [{}] * len(all_data["documents"]),
+                )
+                logger.info(f"BM25 index synced: {len(all_data['documents'])} docs")
+            self._bm25_dirty = False
+        except Exception as e:
+            logger.warning(f"BM25 sync failed, falling back to vector-only: {e}")
+            self._bm25_dirty = False
 
     def query(
         self, 
@@ -119,11 +151,12 @@ class RAGService:
         system_prompt: str = None
     ) -> Dict[str, Any]:
         
-        # 1. Retrieve
+        # 1. Retrieve (hybrid or vector-only)
         initial_k = top_k * 2 if settings.ENABLE_RERANK else top_k
+        retriever = self._get_retriever()
         search_results = []
         if kb_ids:
-            search_results = self.retriever.retrieve(query_text, top_k=initial_k, kb_ids=kb_ids)
+            search_results = retriever.retrieve(query_text, top_k=initial_k, kb_ids=kb_ids)
         
         # 2. Rerank
         if settings.ENABLE_RERANK and search_results:
@@ -194,7 +227,7 @@ class RAGService:
             
             # Retrieve for sub-query
             if kb_ids:
-                results = self.retriever.retrieve(sub_query, top_k=top_k, kb_ids=kb_ids)
+                results = self._get_retriever().retrieve(sub_query, top_k=top_k, kb_ids=kb_ids)
                 
                 # Filter unique results
                 new_results = [r for r in results if r.id not in [existing.id for existing in all_results]]

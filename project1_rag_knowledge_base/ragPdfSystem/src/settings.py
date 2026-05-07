@@ -137,6 +137,10 @@ class Settings(BaseSettings):
     ENABLE_RERANK: bool = True
     RERANK_MODEL: str = "gte-rerank"
 
+    # Hybrid Search (BM25 + Vector + RRF)
+    ENABLE_HYBRID_SEARCH: bool = True
+    HYBRID_ALPHA: float = 0.5  # 0=all BM25, 1=all vector
+
     # Multi-hop
     ENABLE_MULTI_HOP: bool = False
     MAX_HOP: int = 3
